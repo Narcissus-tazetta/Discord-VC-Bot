@@ -12,6 +12,7 @@ import {
     Routes,
     User,
 } from "discord.js";
+import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { slashCommands, VOICE_PRESETS } from "./commands.js";
 import { appConfig } from "./config.js";
@@ -36,6 +37,24 @@ const settingsStore = new GuildSettingsStore(resolve(process.cwd(), "data/guild-
 
 const deleteDelaySec = Math.floor(appConfig.autoDeleteDelayMs / 1000);
 const ephemeralDeleteDelayMs = 30_000;
+const healthPort = Number(process.env.PORT ?? "8000");
+
+function startHealthServer(): void {
+    const server = createServer((req, res) => {
+        if (req.url === "/health" || req.url === "/") {
+            res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+            res.end("ok");
+            return;
+        }
+
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        res.end("not found");
+    });
+
+    server.listen(healthPort, () => {
+        console.log(`Health server listening on :${healthPort}`);
+    });
+}
 
 function scheduleEphemeralDelete(interaction: Interaction): void {
     setTimeout(() => {
@@ -343,6 +362,8 @@ client.on(Events.GuildCreate, () => {
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     manager.onVoiceStateUpdate(oldState, newState);
 });
+
+startHealthServer();
 
 client.login(appConfig.token).catch((error) => {
     console.error("Login failed", error);

@@ -70,7 +70,7 @@ bun run build
 1. このリポジトリをGitHubへpush
 2. Koyebで `Create App` -> `GitHub` を選択
 3. このリポジトリを選択
-4. Service Type は `Worker` を選択
+4. Service Type は `Web service` を選択（Free InstanceではWorker非対応）
 5. Build Method は `Dockerfile` を選択（リポジトリ直下の `Dockerfile` を使用）
 6. Environment Variables を設定
 
@@ -84,6 +84,6 @@ bun run build
 
 注意:
 
-- このBotはHTTPサーバーを立てないため、Koyebでは `Worker` として動かす。
+- このBotは `/health` で応答する最小HTTPサーバーを内蔵しているため、Web serviceとして動かせる。
 - `data/` 配下の保存データは再デプロイや再配置で失われる可能性がある。
 - 永続性が必要なら `VOICE_CATEGORY_ID` を環境変数で固定し、`/setup` 依存を減らす運用がおすすめ。
