@@ -7,7 +7,6 @@ RUN bun install --frozen-lockfile --production
 
 COPY src ./src
 COPY tsconfig.json ./tsconfig.json
-COPY .env.example ./.env.example
 RUN mkdir -p /app/data
 
 CMD ["bun", "run", "start"]
