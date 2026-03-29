@@ -39,6 +39,10 @@ const settingsStore = new GuildSettingsStore(dbPool);
 const deleteDelaySec = Math.floor(appConfig.autoDeleteDelayMs / 1000);
 const ephemeralDeleteDelayMs = 30_000;
 const healthPort = Number(process.env.PORT ?? "8000");
+const accessCommandNames = new Set(["allow", "deny"]);
+const mentionableTargetOptionNames = ["target1", "target2", "target3", "target4", "target5"] as const;
+const presetByName = new Map(VOICE_PRESETS.map((preset) => [preset.name, preset] as const));
+const slashCommandPayload = slashCommands.map((command) => command.toJSON());
 
 function startHealthServer(): void {
     const server = createServer((req, res) => {
@@ -72,7 +76,7 @@ async function deployCommands(): Promise<void> {
     await Promise.all(
         guilds.map(async (_partial, guildId) => {
             await rest.put(Routes.applicationGuildCommands(appConfig.clientId, guildId), {
-                body: slashCommands.map((command) => command.toJSON()),
+                body: slashCommandPayload,
             });
         }),
     );
@@ -95,13 +99,7 @@ function collectAccessTargets(interaction: Interaction): { userIds: string[]; ro
         roleIds.add(directRole.id);
     }
 
-    const targets = [
-        interaction.options.getMentionable("target1"),
-        interaction.options.getMentionable("target2"),
-        interaction.options.getMentionable("target3"),
-        interaction.options.getMentionable("target4"),
-        interaction.options.getMentionable("target5"),
-    ];
+    const targets = mentionableTargetOptionNames.map((name) => interaction.options.getMentionable(name));
 
     for (const target of targets) {
         if (!target) {
@@ -128,7 +126,7 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
         return;
     }
 
-    const preset = VOICE_PRESETS.find((item) => item.name === interaction.commandName);
+    const preset = presetByName.get(interaction.commandName as (typeof VOICE_PRESETS)[number]["name"]);
     if (!preset) {
         return;
     }
@@ -211,7 +209,7 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
 }
 
 async function handleAccessCommand(interaction: Interaction): Promise<boolean> {
-    if (!interaction.isChatInputCommand() || !["allow", "deny"].includes(interaction.commandName)) {
+    if (!interaction.isChatInputCommand() || !accessCommandNames.has(interaction.commandName)) {
         return false;
     }
 
@@ -341,17 +339,15 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
-    void handleSetupCommand(interaction).then((handled) => {
-        if (handled) {
+    void (async () => {
+        if (await handleSetupCommand(interaction)) {
             return;
         }
-        void handleAccessCommand(interaction).then((accessHandled) => {
-            if (accessHandled) {
-                return;
-            }
-            void handlePresetCommand(interaction);
-        });
-    });
+        if (await handleAccessCommand(interaction)) {
+            return;
+        }
+        await handlePresetCommand(interaction);
+    })();
 });
 
 client.on(Events.GuildCreate, () => {

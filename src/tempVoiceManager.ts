@@ -30,6 +30,30 @@ type TempVoiceManagerOptions = {
     onChannelUntracked?: (channelId: string) => void | Promise<void>;
 };
 
+const voiceAccessAllow = [
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.Connect,
+    PermissionsBitField.Flags.Speak,
+    PermissionsBitField.Flags.Stream,
+    PermissionsBitField.Flags.UseVAD,
+];
+
+const voiceAccessAllowMap = {
+    ViewChannel: true,
+    Connect: true,
+    Speak: true,
+    Stream: true,
+    UseVAD: true,
+} as const;
+
+const voiceAccessDenyMap = {
+    ViewChannel: false,
+    Connect: false,
+    Speak: false,
+    Stream: false,
+    UseVAD: false,
+} as const;
+
 export type VoiceAccessConfig = {
     mode: "public" | "restricted";
     allowedUserIds?: string[];
@@ -41,6 +65,7 @@ export class TempVoiceManager {
     private readonly ownerChannels = new Map<string, string>();
     private readonly guildCategoryOverrides = new Map<string, string>();
     private readonly deleting = new Set<string>();
+    private readonly reconciling = new Set<string>();
 
     public constructor(private readonly options: TempVoiceManagerOptions) {}
 
@@ -77,34 +102,31 @@ export class TempVoiceManager {
             throw new Error("あなたが所有している一時VCが見つかりません。先に /duo /trio /quad で作成してください。");
         }
 
-        const normalizedUsers = [...new Set(userIds.filter(Boolean))]
-            .filter((id) => id !== ownerId)
-            .filter((id) => id !== guild.members.me?.id);
-        const normalizedRoles = [...new Set(roleIds.filter(Boolean))].filter((id) => id !== guild.roles.everyone.id);
+        const normalizedUsers = new Set<string>();
+        const normalizedRoles = new Set<string>();
+        const botMemberId = guild.members.me?.id;
 
-        if (normalizedUsers.length === 0 && normalizedRoles.length === 0) {
+        for (const id of userIds) {
+            if (id && id !== ownerId && id !== botMemberId) {
+                normalizedUsers.add(id);
+            }
+        }
+
+        for (const id of roleIds) {
+            if (id && id !== guild.roles.everyone.id) {
+                normalizedRoles.add(id);
+            }
+        }
+
+        if (normalizedUsers.size === 0 && normalizedRoles.size === 0) {
             throw new Error("対象がありません。ユーザーかロールを指定してください。");
         }
 
-        for (const userId of normalizedUsers) {
-            await channel.permissionOverwrites.edit(userId, {
-                ViewChannel: action === "allow",
-                Connect: action === "allow",
-                Speak: action === "allow",
-                Stream: action === "allow",
-                UseVAD: action === "allow",
-            });
-        }
-
-        for (const roleId of normalizedRoles) {
-            await channel.permissionOverwrites.edit(roleId, {
-                ViewChannel: action === "allow",
-                Connect: action === "allow",
-                Speak: action === "allow",
-                Stream: action === "allow",
-                UseVAD: action === "allow",
-            });
-        }
+        const overwrite = action === "allow" ? voiceAccessAllowMap : voiceAccessDenyMap;
+        await Promise.all([
+            ...[...normalizedUsers].map((userId) => channel.permissionOverwrites.edit(userId, overwrite)),
+            ...[...normalizedRoles].map((roleId) => channel.permissionOverwrites.edit(roleId, overwrite)),
+        ]);
 
         return channel;
     }
@@ -181,9 +203,7 @@ export class TempVoiceManager {
             .filter(([, record]) => record.guildId === guild.id)
             .map(([channelId]) => channelId);
 
-        for (const channelId of trackedChannelIds) {
-            await this.reconcileChannel(guild, channelId);
-        }
+        await Promise.all(trackedChannelIds.map((channelId) => this.reconcileChannelSafely(guild, channelId)));
     }
 
     public onVoiceStateUpdate(oldState: VoiceState, newState: VoiceState): void {
@@ -201,7 +221,20 @@ export class TempVoiceManager {
             if (!this.records.has(channelId)) {
                 continue;
             }
-            void this.reconcileChannel(guild, channelId);
+            void this.reconcileChannelSafely(guild, channelId);
+        }
+    }
+
+    private async reconcileChannelSafely(guild: Guild, channelId: string): Promise<void> {
+        if (this.reconciling.has(channelId) || !this.records.has(channelId)) {
+            return;
+        }
+
+        this.reconciling.add(channelId);
+        try {
+            await this.reconcileChannel(guild, channelId);
+        } finally {
+            this.reconciling.delete(channelId);
         }
     }
 
@@ -313,32 +346,15 @@ export class TempVoiceManager {
         botMemberId: string,
         accessConfig: VoiceAccessConfig,
     ): OverwriteResolvable[] {
-        const accessAllow = [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.Connect,
-            PermissionsBitField.Flags.Speak,
-            PermissionsBitField.Flags.Stream,
-            PermissionsBitField.Flags.UseVAD,
-        ];
-
         const overwrites: OverwriteResolvable[] = [
             {
                 id: guild.roles.everyone.id,
-                allow: accessConfig.mode === "public" ? accessAllow : [],
-                deny:
-                    accessConfig.mode === "restricted"
-                        ? [
-                              PermissionsBitField.Flags.ViewChannel,
-                              PermissionsBitField.Flags.Connect,
-                              PermissionsBitField.Flags.Speak,
-                              PermissionsBitField.Flags.Stream,
-                              PermissionsBitField.Flags.UseVAD,
-                          ]
-                        : [],
+                allow: accessConfig.mode === "public" ? voiceAccessAllow : [],
+                deny: accessConfig.mode === "restricted" ? voiceAccessAllow : [],
             },
             {
                 id: owner.id,
-                allow: accessAllow,
+                allow: voiceAccessAllow,
             },
             {
                 id: botMemberId,
@@ -362,14 +378,14 @@ export class TempVoiceManager {
             for (const userId of users) {
                 overwrites.push({
                     id: userId,
-                    allow: accessAllow,
+                    allow: voiceAccessAllow,
                 });
             }
 
             for (const roleId of roles) {
                 overwrites.push({
                     id: roleId,
-                    allow: accessAllow,
+                    allow: voiceAccessAllow,
                 });
             }
         }

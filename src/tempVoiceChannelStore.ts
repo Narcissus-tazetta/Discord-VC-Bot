@@ -32,11 +32,15 @@ export class TempVoiceChannelStore {
     }
 
     public entries(): TrackedTempVoiceChannel[] {
-        return [...this.channels.entries()].map(([channelId, value]) => ({
-            channelId,
-            guildId: value.guildId,
-            ownerId: value.ownerId,
-        }));
+        const result: TrackedTempVoiceChannel[] = [];
+        for (const [channelId, value] of this.channels) {
+            result.push({
+                channelId,
+                guildId: value.guildId,
+                ownerId: value.ownerId,
+            });
+        }
+        return result;
     }
 
     public async upsert(entry: TrackedTempVoiceChannel): Promise<void> {

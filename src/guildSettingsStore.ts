@@ -23,8 +23,9 @@ export class GuildSettingsStore {
         );
 
         this.guilds.clear();
-        for (const row of result.rows) {
-            this.guilds.set(row.guild_id, { categoryId: row.category_id });
+        const guilds = this.guilds;
+        for (const { guild_id, category_id } of result.rows) {
+            guilds.set(guild_id, { categoryId: category_id });
         }
     }
 
