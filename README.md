@@ -20,6 +20,7 @@ cp .env.example .env
 
 - `BOT_TOKEN`: Botトークン
 - `CLIENT_ID`: Application ID
+- `DATABASE_URL`: PostgreSQL接続URL（Supabase推奨）
 - `VOICE_CATEGORY_ID`: 初期カテゴリID（任意。未設定なら `/setup` で設定）
 - `AUTO_DELETE_DELAY_MS`: 空室後の削除待機時間（既定60000）
 - `CHANNEL_PREFIX`: 一時VC名の接頭辞（既定tempvc）
@@ -51,7 +52,7 @@ bun run dev
 `access` は任意で、未指定時は `全員(public)` になります。`access` が `限定` の場合は、`allow_user` または `allow_role` のどちらか1つ以上が必須です。
 
 作成されたVCは `access` で指定した範囲のみ閲覧・接続可能です。コマンド応答はephemeralで実行者にのみ表示されます。
-一時VCの追跡情報は保存されるため、Bot再起動後も空室検知による自動削除が継続されます。
+一時VC追跡情報とサーバー設定はPostgreSQLへ保存されるため、Bot再起動後も空室検知による自動削除が継続されます。
 
 ## 型チェック
 
@@ -76,6 +77,7 @@ bun run build
 
 - `BOT_TOKEN`
 - `CLIENT_ID`
+- `DATABASE_URL`
 - `VOICE_CATEGORY_ID`（任意）
 - `AUTO_DELETE_DELAY_MS`（例: `60000`）
 - `CHANNEL_PREFIX`（例: `tempvc`）
@@ -85,5 +87,4 @@ bun run build
 注意:
 
 - このBotは `/health` で応答する最小HTTPサーバーを内蔵しているため、Web serviceとして動かせる。
-- `data/` 配下の保存データは再デプロイや再配置で失われる可能性がある。
-- 永続性が必要なら `VOICE_CATEGORY_ID` を環境変数で固定し、`/setup` 依存を減らす運用がおすすめ。
+- Supabaseを使う場合は `DATABASE_URL` に Session pooler または Transaction pooler のURIを設定する。

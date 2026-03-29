@@ -5,6 +5,7 @@ loadDotEnv();
 type AppConfig = {
     readonly token: string;
     readonly clientId: string;
+    readonly databaseUrl: string;
     readonly defaultVoiceCategoryId?: string;
     readonly autoDeleteDelayMs: number;
     readonly channelPrefix: string;
@@ -34,6 +35,7 @@ function toPositiveInt(name: string, fallback: number): number {
 export const appConfig: AppConfig = {
     token: required("BOT_TOKEN"),
     clientId: required("CLIENT_ID"),
+    databaseUrl: required("DATABASE_URL"),
     defaultVoiceCategoryId: process.env.VOICE_CATEGORY_ID?.trim() || undefined,
     autoDeleteDelayMs: toPositiveInt("AUTO_DELETE_DELAY_MS", 60_000),
     channelPrefix: process.env.CHANNEL_PREFIX?.trim() || "tempvc",

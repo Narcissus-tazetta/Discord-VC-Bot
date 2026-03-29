@@ -1,35 +1,30 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { Pool } from "pg";
 
 export type GuildSetting = {
     categoryId: string;
 };
 
-type GuildSettingsFile = {
-    guilds: Record<string, GuildSetting>;
-};
-
 export class GuildSettingsStore {
     private readonly guilds = new Map<string, GuildSetting>();
 
-    public constructor(private readonly filePath: string) {}
+    public constructor(private readonly pool: Pool) {}
 
     public async load(): Promise<void> {
-        try {
-            const raw = await readFile(this.filePath, "utf-8");
-            const parsed = JSON.parse(raw) as GuildSettingsFile;
-            const entries = Object.entries(parsed.guilds ?? {});
-            for (const [guildId, setting] of entries) {
-                if (!setting?.categoryId) {
-                    continue;
-                }
-                this.guilds.set(guildId, { categoryId: setting.categoryId });
-            }
-        } catch (error) {
-            const code = (error as NodeJS.ErrnoException).code;
-            if (code !== "ENOENT") {
-                throw error;
-            }
+        await this.pool.query(`
+            CREATE TABLE IF NOT EXISTS guild_settings (
+                guild_id TEXT PRIMARY KEY,
+                category_id TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        `);
+
+        const result = await this.pool.query<{ guild_id: string; category_id: string }>(
+            "SELECT guild_id, category_id FROM guild_settings",
+        );
+
+        this.guilds.clear();
+        for (const row of result.rows) {
+            this.guilds.set(row.guild_id, { categoryId: row.category_id });
         }
     }
 
@@ -43,14 +38,14 @@ export class GuildSettingsStore {
 
     public async set(guildId: string, setting: GuildSetting): Promise<void> {
         this.guilds.set(guildId, setting);
-        await this.persist();
-    }
-
-    private async persist(): Promise<void> {
-        await mkdir(dirname(this.filePath), { recursive: true });
-        const payload: GuildSettingsFile = {
-            guilds: Object.fromEntries(this.guilds.entries()),
-        };
-        await writeFile(this.filePath, JSON.stringify(payload, null, 2), "utf-8");
+        await this.pool.query(
+            `
+            INSERT INTO guild_settings (guild_id, category_id, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (guild_id)
+            DO UPDATE SET category_id = EXCLUDED.category_id, updated_at = now()
+            `,
+            [guildId, setting.categoryId],
+        );
     }
 }

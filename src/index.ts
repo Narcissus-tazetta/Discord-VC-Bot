@@ -13,9 +13,9 @@ import {
     User,
 } from "discord.js";
 import { createServer } from "node:http";
-import { resolve } from "node:path";
 import { slashCommands, VOICE_PRESETS } from "./commands.js";
 import { appConfig } from "./config.js";
+import { createDatabasePool } from "./database.js";
 import { GuildSettingsStore } from "./guildSettingsStore.js";
 import { TempVoiceManager, VoiceAccessConfig } from "./tempVoiceManager.js";
 import { TempVoiceChannelStore } from "./tempVoiceChannelStore.js";
@@ -24,7 +24,8 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
-const tempVoiceChannelStore = new TempVoiceChannelStore(resolve(process.cwd(), "data/temp-voice-channels.json"));
+const dbPool = createDatabasePool(appConfig.databaseUrl);
+const tempVoiceChannelStore = new TempVoiceChannelStore(dbPool);
 
 const manager = new TempVoiceManager({
     defaultCategoryId: appConfig.defaultVoiceCategoryId,
@@ -33,7 +34,7 @@ const manager = new TempVoiceManager({
     onChannelTracked: (tracked) => tempVoiceChannelStore.upsert(tracked),
     onChannelUntracked: (channelId) => tempVoiceChannelStore.delete(channelId),
 });
-const settingsStore = new GuildSettingsStore(resolve(process.cwd(), "data/guild-settings.json"));
+const settingsStore = new GuildSettingsStore(dbPool);
 
 const deleteDelaySec = Math.floor(appConfig.autoDeleteDelayMs / 1000);
 const ephemeralDeleteDelayMs = 30_000;
