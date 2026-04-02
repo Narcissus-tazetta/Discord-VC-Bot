@@ -99,7 +99,9 @@ export class TempVoiceManager {
     ): Promise<VoiceChannel> {
         const channel = await this.getExistingOwnerChannel(guild, ownerId);
         if (!channel) {
-            throw new Error("あなたが所有している一時VCが見つかりません。先に /duo /trio /quad で作成してください。");
+            throw new Error(
+                "あなたが所有している一時VCが見つかりません。先に /create または /duo /trio /quad で作成してください。",
+            );
         }
 
         const normalizedUsers = new Set<string>();
@@ -134,7 +136,7 @@ export class TempVoiceManager {
     public async createPrivateVoiceChannel(
         guild: Guild,
         owner: GuildMember,
-        size: 2 | 3 | 4,
+        size: number,
         requestedName?: string,
         accessConfig: VoiceAccessConfig = { mode: "public" },
     ): Promise<{ channel: VoiceChannel; created: boolean; renamed: boolean }> {
@@ -143,27 +145,29 @@ export class TempVoiceManager {
             throw new Error("Bot member is not ready in this guild");
         }
 
+        const normalizedSize = Number.isInteger(size) && size >= 0 && size <= 99 ? size : 0;
+
         const permissionOverwrites = this.buildPermissionOverwrites(guild, owner, botMember.id, accessConfig);
 
         const existingChannel = await this.getExistingOwnerChannel(guild, owner.id);
         if (existingChannel) {
             let renamed = false;
-            const nextName = this.buildChannelName(size, owner.user.username, requestedName);
+            const nextName = this.buildChannelName(normalizedSize, owner.user.username, requestedName);
 
             if (existingChannel.name !== nextName) {
                 await existingChannel.setName(nextName);
                 renamed = true;
             }
 
-            if (existingChannel.userLimit !== size) {
-                await existingChannel.setUserLimit(size);
+            if (existingChannel.userLimit !== normalizedSize) {
+                await existingChannel.setUserLimit(normalizedSize);
             }
 
             await existingChannel.permissionOverwrites.set(permissionOverwrites);
 
             const existingRecord = this.records.get(existingChannel.id);
             if (existingRecord) {
-                existingRecord.limit = size;
+                existingRecord.limit = normalizedSize;
             }
 
             if (existingChannel.members.size === 0) {
@@ -177,17 +181,22 @@ export class TempVoiceManager {
 
         const category = await this.fetchCategory(guild, this.resolveCategoryId(guild.id));
 
-        const channelName = this.buildChannelName(size, owner.user.username, requestedName);
+        const channelName = this.buildChannelName(normalizedSize, owner.user.username, requestedName);
 
         const channel = await guild.channels.create({
             name: channelName,
             type: ChannelType.GuildVoice,
             parent: category.id,
-            userLimit: size,
+            userLimit: normalizedSize,
             permissionOverwrites: permissionOverwrites,
         });
 
-        this.records.set(channel.id, { guildId: guild.id, ownerId: owner.id, limit: size, deleteTimer: null });
+        this.records.set(channel.id, {
+            guildId: guild.id,
+            ownerId: owner.id,
+            limit: normalizedSize,
+            deleteTimer: null,
+        });
         this.ownerChannels.set(owner.id, channel.id);
         this.emitTracked({ channelId: channel.id, guildId: guild.id, ownerId: owner.id });
 
@@ -323,14 +332,15 @@ export class TempVoiceManager {
         return this.guildCategoryOverrides.get(guildId) ?? this.options.defaultCategoryId ?? null;
     }
 
-    private buildChannelName(size: 2 | 3 | 4, username: string, requestedName?: string): string {
+    private buildChannelName(size: number, username: string, requestedName?: string): string {
         const normalizedRequested = this.normalizeRequestedName(requestedName);
         if (normalizedRequested) {
             return normalizedRequested.slice(0, 90);
         }
 
         const baseName = this.sanitize(username);
-        return `${this.options.channelPrefix}-${size}-${baseName}`.slice(0, 90);
+        const sizeLabel = size === 0 ? "free" : String(size);
+        return `${this.options.channelPrefix}-${sizeLabel}-${baseName}`.slice(0, 90);
     }
 
     private normalizeRequestedName(raw?: string): string {

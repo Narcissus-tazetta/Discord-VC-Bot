@@ -126,8 +126,9 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
         return;
     }
 
+    const isCreateCommand = interaction.commandName === "create";
     const preset = presetByName.get(interaction.commandName as (typeof VOICE_PRESETS)[number]["name"]);
-    if (!preset) {
+    if (!preset && !isCreateCommand) {
         return;
     }
 
@@ -148,6 +149,9 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
     }
 
     const requestedName = interaction.options.getString("name", true).trim();
+    const requestedLimit = isCreateCommand ? (interaction.options.getInteger("limit") ?? 0) : (preset?.userLimit ?? 0);
+    const userLimit = Math.max(0, Math.min(99, requestedLimit));
+    const limitLabel = userLimit === 0 ? "無制限" : `${userLimit}人まで`;
     const accessMode = interaction.options.getString("access") ?? "public";
     const targets = collectAccessTargets(interaction);
 
@@ -180,7 +184,7 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
         const result = await manager.createPrivateVoiceChannel(
             interaction.guild,
             member,
-            preset.userLimit,
+            userLimit,
             requestedName,
             accessConfig,
         );
@@ -193,10 +197,10 @@ async function handlePresetCommand(interaction: Interaction): Promise<void> {
 
         await interaction.editReply({
             content: result.created
-                ? `作成完了: ${channel.toString()}\nこのVCの参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}で、空室が${deleteDelaySec}秒続くと自動削除されます。`
+                ? `作成完了: ${channel.toString()}\n上限は${limitLabel}、参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}で、空室が${deleteDelaySec}秒続くと自動削除されます。`
                 : result.renamed
-                  ? `既存のあなたのVC設定を更新しました: ${channel.toString()}\n参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}、空室が${deleteDelaySec}秒続くと自動削除されます。`
-                  : `既存のあなたのVCはこちらです: ${channel.toString()}\n参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}、空室が${deleteDelaySec}秒続くと自動削除されます。`,
+                  ? `既存のあなたのVC設定を更新しました: ${channel.toString()}\n上限は${limitLabel}、参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}、空室が${deleteDelaySec}秒続くと自動削除されます。`
+                  : `既存のあなたのVCはこちらです: ${channel.toString()}\n上限は${limitLabel}、参加範囲は${accessConfig.mode === "public" ? "全員" : "限定"}、空室が${deleteDelaySec}秒続くと自動削除されます。`,
         });
         scheduleEphemeralDelete(interaction);
     } catch (error) {

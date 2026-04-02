@@ -55,6 +55,30 @@ export const denyCommand = addAccessTargetOptions(
     new SlashCommandBuilder().setName("deny").setDescription("自分の一時VCからユーザー/ロールの参加を拒否"),
 );
 
+export const createCommand = addAccessTargetOptions(
+    new SlashCommandBuilder()
+        .setName("create")
+        .setDescription("人数と名前を指定して一時VCを作成")
+        .addStringOption((option) =>
+            option.setName("name").setDescription("作成するVC名").setMaxLength(90).setRequired(true),
+        )
+        .addIntegerOption((option) =>
+            option
+                .setName("limit")
+                .setDescription("参加人数（0で無制限、1-99で人数指定）")
+                .setMinValue(0)
+                .setMaxValue(99)
+                .setRequired(false),
+        )
+        .addStringOption((option) =>
+            option
+                .setName("access")
+                .setDescription("参加範囲")
+                .addChoices({ name: "全員", value: "public" }, { name: "限定", value: "restricted" })
+                .setRequired(false),
+        ),
+);
+
 export const slashCommands = [
     ...VOICE_PRESETS.map((preset) =>
         addAccessTargetOptions(
@@ -73,6 +97,7 @@ export const slashCommands = [
                 ),
         ),
     ),
+    createCommand,
     setupCommand,
     allowCommand,
     denyCommand,
